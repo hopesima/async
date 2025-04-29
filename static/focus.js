@@ -6,44 +6,52 @@ const API = {
 };
 
 async function run() {
+    try {
         const orgOgrns = await sendRequest(API.organizationList);
         const ogrns = orgOgrns.join(",");
 
-        const requisites = await sendRequest(`${API.orgReqs}?ogrn=${ogrns}`);
+        const [requisites, analytics, buh] = await Promise.all([
+            sendRequest(`${API.orgReqs}?ogrn=${ogrns}`),
+            sendRequest(`${API.analytics}?ogrn=${ogrns}`),
+            sendRequest(`${API.buhForms}?ogrn=${ogrns}`)
+        ]);
+
         const orgsMap = reqsToMap(requisites);
-
-        const analytics = await sendRequest(`${API.analytics}?ogrn=${ogrns}`);
         addInOrgsMap(orgsMap, analytics, "analytics");
-
-        const buh = await sendRequest(`${API.buhForms}?ogrn=${ogrns}`);
         addInOrgsMap(orgsMap, buh, "buhForms");
 
         render(orgsMap, orgOgrns);
+    } catch (error) {
+        if (error.message.includes("Request failed with status")) {
+            const match = error.message.match(/Request failed with status (\d+) (.+)/);
+            if (match) {
+                alert(`Request error: Code ${match[1]}, Status: ${match[2]}`);
+            } else {
+                alert(`Request error: ${error.message}`);
+            }
+        } else {
+            alert(`Error: ${error.message}`);
+        }
+    }
 }
+
 
 run();
 
-function sendRequest(url) {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("GET", url, true);
-
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200) {
-                    resolve(JSON.parse(xhr.response));
-                } else {
-                    reject(new Error(`Request failed with status ${xhr.status}`));
-                }
-            }
-        };
-
-        xhr.onerror = function () {
-            reject(new Error("Network error"));
-        };
-
-        xhr.send();
-    });
+async function sendRequest(url) {
+    try {
+        const response = await fetch(url);
+        if (response.status >= 300) {
+            alert(`Error with status: ${response.status} ${response.statusText}`);
+            throw new Error(`Error: ${response.status} ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        if (error.name === 'TypeError') {
+            throw new Error("TypeError");
+        }
+        throw error;
+    }
 }
 
 function reqsToMap(requisites) {
@@ -94,7 +102,7 @@ function renderOrganization(orgInfo, template, container) {
                 orgInfo.buhForms[orgInfo.buhForms.length - 1].form2[0] &&
                 orgInfo.buhForms[orgInfo.buhForms.length - 1].form2[0]
                     .endValue) ||
-                0
+            0
         );
     } else {
         money.textContent = "—";
@@ -113,10 +121,10 @@ function formatMoney(money) {
     const rounded = money.toFixed(0);
     const numLen = rounded.length;
     for (let i = numLen - 3; i > 0; i -= 3) {
-        formatted = `${formatted.slice(0, i)} ${formatted.slice(i)}`;
+        formatted = `${formatted.slice(0, i)}${formatted.slice(i)}`;
     }
 
-    return `${formatted} ₽`;
+    return `${formatted}₽`;
 }
 
 function createAddress(address) {
